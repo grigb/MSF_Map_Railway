@@ -33,6 +33,7 @@ class ExtractMap extends MapUtil
    #pRMXPending;
    #bPending;
    #twObjectIx_PendingDelete;
+   #liveRefreshTimer;
    #publishSuccessTimer;
 
    static eSTATE =
@@ -63,6 +64,7 @@ class ExtractMap extends MapUtil
       this.#pZone = new MV.MVMF.COOKIE.ZONE (pData, 'Origin');
 
       this.#twObjectIx_PendingDelete = 0;
+      this.#liveRefreshTimer = null;
 
       this.#m_wClass_Object = (wClass_Object == 0) ? 71 : wClass_Object;
       this.#m_twObjectIx    = (twObjectIx == 0)  ? 1 : twObjectIx;
@@ -190,6 +192,53 @@ class ExtractMap extends MapUtil
       jItem.find ('.jsSceneItemName').text (pRMCObject.pName.wsRMPObjectId);
    }
 
+   IsActiveSceneChild (pChild)
+   {
+      return !!(this.#pRMXRoot &&
+         pChild &&
+         pChild.wClass_Object == 73 &&
+         pChild.wClass_Parent == 73 &&
+         pChild.twParentIx == this.#pRMXRoot.twObjectIx);
+   }
+
+   SyncCurrentSceneChildren ()
+   {
+      let bAttached = false;
+
+      if (this.#pRMXRoot)
+      {
+         let aPObject = [];
+         this.#pRMXRoot.Child_Enum ('RMPObject', this, this.EnumItem, aPObject);
+
+         for (let i=0; i < aPObject.length; i++)
+         {
+            const sKey = '73' + '-' + aPObject[i].twObjectIx;
+
+            if (this.#m_MapRMXItem[sKey] == undefined)
+            {
+               this.#m_MapRMXItem[sKey] = aPObject[i];
+               aPObject[i].Attach (this);
+               bAttached = true;
+            }
+         }
+      }
+
+      return bAttached;
+   }
+
+   QueueLiveRefresh ()
+   {
+      if (this.#liveRefreshTimer)
+         clearTimeout (this.#liveRefreshTimer);
+
+      this.#liveRefreshTimer = setTimeout (() => {
+         this.#liveRefreshTimer = null;
+
+         if (this.IsReady ())
+            this.UpdateEditor ();
+      }, 50);
+   }
+
    onInserted (pNotice)
    {
       if (this.IsReady ())
@@ -207,6 +256,20 @@ class ExtractMap extends MapUtil
             {
                this.InsertSceneItem (pChild, true);
             }
+            else if (this.IsActiveSceneChild (pChild))
+            {
+               const sKey = '73' + '-' + pChild.twObjectIx;
+
+               if (this.#m_MapRMXItem[sKey] == undefined)
+               {
+                  this.#m_MapRMXItem[sKey] = pChild;
+                  pChild.Attach (this);
+               }
+               else if (pChild.IsReady ())
+               {
+                  this.QueueLiveRefresh ();
+               }
+            }
          }
       }
    }
@@ -218,6 +281,11 @@ class ExtractMap extends MapUtil
          if (pNotice.pData.pChild == null)
          {
             this.nStack--;
+         }
+         else if (this.IsActiveSceneChild (pNotice.pData.pChild) || pNotice.pCreator == this.#pRMXRoot)
+         {
+            if (this.SyncCurrentSceneChildren () == false)
+               this.QueueLiveRefresh ();
          }
       }
    }
@@ -244,6 +312,11 @@ class ExtractMap extends MapUtil
             {
                this.#jPObject.find ('.jsSceneItem[twObjectIx=' + pChild.twObjectIx + ']').remove ();
 // TODO: finish this
+            }
+            else if (this.IsActiveSceneChild (pChild))
+            {
+               delete this.#m_MapRMXItem['73' + '-' + pChild.twObjectIx];
+               this.QueueLiveRefresh ();
             }
          }
       }
@@ -473,6 +546,14 @@ class ExtractMap extends MapUtil
                pNotice.pCreator.wClass_Object == this.#pRMXPending.wClass_Object && pNotice.pCreator.twObjectIx == this.#pRMXPending.twObjectIx)
       {
          this.#bPending = false;
+      }
+      else if (this.IsReady () && pNotice.pCreator.IsReady ())
+      {
+         if (pNotice.pCreator == this.#pRMXRoot || this.#m_MapRMXItem['73' + '-' + pNotice.pCreator.twObjectIx] != undefined)
+         {
+            if (this.SyncCurrentSceneChildren () == false)
+               this.QueueLiveRefresh ();
+         }
       }
    }
 
