@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.1
+    environment:
+      MYSQL_ROOT_PASSWORD: my-secret-pw
+      MYSQL_DATABASE: msf_map
+      MYSQL_USER: msf_user
+      MYSQL_PASSWORD: msf_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Mount the initialization script so it runs automatically on first boot
+      - ./db/MySQL/_Distrib/MSF_Map.sql:/docker-entrypoint-initdb.d/MSF_Map.sql
+    ports:
+      - "3307:3306"
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "msf_user", "-pmsf_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "2000:2000"
+    command: >
+      sh -c '
+      echo "Waiting for MySQL database schema script to finish (can take 30s+)..." &&
+      sleep 20 &&
+      node server.js'
+    environment:
+      # Node.js Server specific variables mapping to Railway config pattern
+      PORT: 2000
+      RAILWAY_PUBLIC_DOMAIN: localhost
+      # Setting SSL to false locally so we don't need certs just to test
+      # This needs to be overridden in production/proxy setups
+      MVSADMINKEY: local-admin-key
+      MYCOMPANYID: peermesh
+      
+      # MySQL Connection variables
+      MYSQLHOST: db
+      MYSQLPORT: 3306
+      MYSQLUSER: msf_user
+      MYSQLPASSWORD: msf_password
+      MYSQLDATABASE: msf_map
+    
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
