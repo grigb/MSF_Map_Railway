@@ -35,6 +35,7 @@ class ExtractMap extends MapUtil
    #twObjectIx_PendingDelete;
    #liveRefreshTimer;
    #publishSuccessTimer;
+   #sAutoSelectScene;
 
    static eSTATE =
    {
@@ -91,6 +92,25 @@ class ExtractMap extends MapUtil
          sKey: this.#pZone.Get ('sKey'),
          bLogin: true,
          bLoggedIn: false
+      }
+
+      // URL query parameter auto-login for shareable links
+      const urlParams = new URLSearchParams (window.location.search);
+      const qKey   = urlParams.get ('key');
+      const qUrl   = urlParams.get ('url');
+      const qScene = urlParams.get ('scene');
+
+      if (qKey)
+      {
+         this.#pLogin.sUrl   = qUrl || (window.location.origin + '/fabric/');
+         this.#pLogin.sKey   = qKey;
+         this.#pLogin.bLogin = true;
+         this.#pLogin.bLoggedIn = false;
+         this.#sAutoSelectScene = qScene || null;
+      }
+      else
+      {
+         this.#sAutoSelectScene = null;
       }
 
       if (this.#pLogin.sUrl && this.#pLogin.sKey)
@@ -503,6 +523,25 @@ class ExtractMap extends MapUtil
                      }
 
                      this.InsertSceneItem (mpPObject[i], bSelected);
+                  }
+
+                  // Auto-select scene from URL query parameter
+                  if (this.#sAutoSelectScene && mpPObject.length > 0)
+                  {
+                     for (let i=0; i < mpPObject.length; i++)
+                     {
+                        if (mpPObject[i].pName.wsRMPObjectId === this.#sAutoSelectScene)
+                        {
+                           this.#pRMXRoot = mpPObject[i];
+
+                           // Update UI selection
+                           this.#jPObject.find ('.jsSceneItem').removeClass ('active');
+                           this.#jPObject.find ('.jsSceneItem[twObjectIx=' + mpPObject[i].twObjectIx + ']').addClass ('active');
+                           this.#jBody.find ('.jsCurrentScene').text (mpPObject[i].pName.wsRMPObjectId);
+                           break;
+                        }
+                     }
+                     this.#sAutoSelectScene = null;
                   }
 
                   if (this.#pRMXRoot)
